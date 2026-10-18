@@ -132,6 +132,9 @@ accession 使用官方 6/10 位格式校验。`tr|A0A1234567|...` 的分隔格�
 
 TSV 前七列为请求的 `original_id`、`accession`、`taxonomy_id`、`organism_name`、`matched_accession`、`mapping_status`、`mapping_source`。
 
+original_id 是原始 FASTA 中的 ID，即标题中 > 后、第一个空白之前的内容，保留原样。
+accession 是从中提取并规范为大写的 UniProt 编号，用于 API 查询。
+
 其他列：
 
 - `record_index`：原始 FASTA 记录序号。
