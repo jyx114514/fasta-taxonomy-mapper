@@ -135,6 +135,19 @@ TSV 前七列为请求的 `original_id`、`accession`、`taxonomy_id`、`organis
 original_id 是原始 FASTA 中的 ID，即标题中 > 后、第一个空白之前的内容，保留原样。
 accession 是从中提取并规范为大写的 UniProt 编号，用于 API 查询。
 
+mapping_status 共有 7 种输出：
+状态	含义
+primary_match	输入 accession 与当前主 accession 精确匹配
+secondary_match	输入是历史 secondary accession，唯一映射到一个当前条目
+ambiguous	对应多个当前条目，无法确定唯一映射
+unmapped	主、secondary 查询均成功完成，但当前活动数据库中没有精确匹配
+invalid_id	输入 ID 格式不受支持，或 accession 格式不合法
+api_error	网络、HTTP、响应解析或分页检查失败，下次运行会重新查询
+interrupted	运行中断，该 accession 尚未完成查询
+
+
+只有 primary_match 和 secondary_match 属于已确认映射，可用于物种筛选；筛选时还要求 taxonomy_id 与 --taxon 完全一致。
+
 其他列：
 
 - `record_index`：原始 FASTA 记录序号。
