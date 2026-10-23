@@ -7,37 +7,37 @@
 ## 运行环境
 
 - Python 3.11+。
-- 仅依赖 `requests`、`biopython` 和标准库；依赖范围列于 `requirements-fasta-taxonomy.txt`。
+- 仅依赖 `requests`、`biopython` 和标准库；依赖范围列于 requirements-fasta-taxonomy.txt
 - 脚本不会自动安装依赖、重建虚拟环境或升级 Python。
 - 验证环境：Python 3.11.9、requests 2.34.2、Biopython 1.88。
 
-所有示例均使用相对路径，不依赖个人用户名、盘符或固定的项目存放位置。以下命令从项目根目录执行，并使用项目已有的虚拟环境。当前目录结构如下：
+所有示例均使用相对路径，不依赖个人用户名、盘符或固定的项目存放位置。以下命令从项目根目录执行，并使用项目已有的虚拟环境。目录结构示意如下，其中 `data/` 是需自行准备的输入位置：
 
 ```text
 project-root/
 ├── .venv/
 ├── 重写/
-│   ├── fasta_taxonomy_mapper.py
-│   ├── README.md
-│   └── README.en.md
+│   └── taxonomy脚本/
+│       ├── fasta_taxonomy_mapper.py
+│       ├── README.md
+│       └── README.en.md
 ├── 配置文件/
 │   └── requirements-fasta-taxonomy.txt
-├── examples/
-│   └── taxonomy_smoke.fasta
-├── tests/
-└── validation/
+├── data/                 # 自备输入，按需创建
+│   └── proteins.fasta
+└── results/              # 生成的输出
 ```
 
 Windows PowerShell，查看帮助（命令均为单行，不使用续行符）：
 
 ```powershell
-.\.venv\Scripts\python.exe .\重写\fasta_taxonomy_mapper.py --help
+.\.venv\Scripts\python.exe .\重写\taxonomy脚本\fasta_taxonomy_mapper.py --help
 ```
 
-用随附的小型 FASTA 建立映射：
+用自己的 FASTA 建立映射（`data/proteins.fasta` 为占位路径，需先准备输入文件）：
 
 ```powershell
-.\.venv\Scripts\python.exe .\重写\fasta_taxonomy_mapper.py --input examples/taxonomy_smoke.fasta --output results/taxonomy_mapping.tsv
+.\.venv\Scripts\python.exe .\重写\taxonomy脚本\fasta_taxonomy_mapper.py --input data/proteins.fasta --output results/taxonomy_mapping.tsv
 ```
 
 脚本使用 `pathlib.Path`；相对路径以启动命令时的工作目录为准，不绑定到脚本目录。若调整目录结构，相应修改脚本、输入和输出的相对路径即可。
@@ -45,7 +45,7 @@ Windows PowerShell，查看帮助（命令均为单行，不使用续行符）�
 Linux/WSL 使用该平台的项目环境，例如：
 
 ```bash
-.venv/bin/python ./重写/fasta_taxonomy_mapper.py --input examples/taxonomy_smoke.fasta --output results/taxonomy_mapping.tsv
+.venv/bin/python ./重写/taxonomy脚本/fasta_taxonomy_mapper.py --input data/proteins.fasta --output results/taxonomy_mapping.tsv
 ```
 
 ## 使用示例
@@ -55,13 +55,13 @@ Linux/WSL 使用该平台的项目环境，例如：
 建立所有物种的映射，不限定目标物种：
 
 ```powershell
-.\.venv\Scripts\python.exe .\重写\fasta_taxonomy_mapper.py --input data/proteins.fasta --output results/taxonomy_mapping.tsv --cache results/uniprot_taxonomy.cache.sqlite3
+.\.venv\Scripts\python.exe .\重写\taxonomy脚本\fasta_taxonomy_mapper.py --input data/proteins.fasta --output results/taxonomy_mapping.tsv --cache results/uniprot_taxonomy.cache.sqlite3
 ```
 
 按精确 NCBI Taxonomy ID `9606` 筛选智人：
 
 ```powershell
-.\.venv\Scripts\python.exe .\重写\fasta_taxonomy_mapper.py --input data/proteins.fasta --output results/taxonomy_mapping.tsv --cache results/uniprot_taxonomy.cache.sqlite3 --batch-size 50 --timeout 30 --retries 3 --taxon 9606 --filtered-fasta results/human.fasta
+.\.venv\Scripts\python.exe .\重写\taxonomy脚本\fasta_taxonomy_mapper.py --input data/proteins.fasta --output results/taxonomy_mapping.tsv --cache results/uniprot_taxonomy.cache.sqlite3 --batch-size 50 --timeout 30 --retries 3 --taxon 9606 --filtered-fasta results/human.fasta
 ```
 
 `--output` 始终输出完整映射表。指定 `--taxon` 后，表内额外记录目标物种判断、报告增加目标数量；`--filtered-fasta` 才生成仅包含目标物种的 FASTA。黑猩猩 `9598`、倭黑猩猩 `9597` 等不会因为属于灵长类就被纳入 `9606`。
@@ -130,23 +130,34 @@ accession 使用官方 6/10 位格式校验。`tr|A0A1234567|...` 的分隔格�
 | `taxonomy_mapping.report.json` | 记录/唯一 accession 状态统计、请求与重试数、缓存命中数、版本、输入 SHA-256、查询时间和参数 |
 | `taxonomy_mapping.cache.sqlite3` | 增量缓存；可用 `--cache` 指定共享路径 |
 
-TSV 前七列为请求的 `original_id`、`accession`、`taxonomy_id`、`organism_name`、`matched_accession`、`mapping_status`、`mapping_source`。
+完整映射表与未确定记录表使用相同的 16 列表头。前七列固定按下表顺序输出；每条 FASTA 记录对应一行，重复 ID 不合并。
 
-original_id 是原始 FASTA 中的 ID，即标题中 > 后、第一个空白之前的内容，保留原样。
-accession 是从中提取并规范为大写的 UniProt 编号，用于 API 查询。
+| 列序 | 字段 | 预计输出及空值规则 |
+|---|---|---|
+| 1 | `original_id` | Biopython 解析的原始 `record.id`，即 `>` 后首个空白前的标识符；保留大小写和 `sp\|…\|…` / `tr\|…\|…` 包装，不含 `>` 或完整描述。 |
+| 2 | `accession` | 从受支持标题中提取并转为大写的查询 accession。例如 `sp\|p69905\|HBA_HUMAN` 输出 `P69905`。非法普通 ID 也会大写；不受支持的管道分隔 ID 则原样保留去除首尾空白后的 token，供排查，不保证是合法 accession。 |
+| 3 | `taxonomy_id` | 仅在 `primary_match` / `secondary_match` 时输出唯一当前条目的正整数 NCBI Taxonomy ID，例如 `9606`；其余状态为空字符串，不输出 `0`、`None` 或 `NA`。 |
+| 4 | `organism_name` | 同一确定条目的 API `organism.scientificName`，例如 `Homo sapiens`；非确定状态留空。不从 FASTA 描述推断物种。 |
+| 5 | `matched_accession` | 确定匹配的当前主 accession。主匹配时等于第 2 列；secondary 匹配时输出关联的当前主 accession，第 2 列仍保留输入 accession；非确定状态留空。 |
+| 6 | `mapping_status` | 固定状态字符串：`primary_match`、`secondary_match`、`ambiguous`、`unmapped`、`invalid_id`、`api_error` 或 `interrupted`，含义见上表。 |
+| 7 | `mapping_source` | 匹配证据或失败阶段的文字标记，具体取值见下文；缓存命中保留原标记，不改为 `cache`。 |
 
-mapping_status 共有 7 种输出：
-状态	含义
-primary_match	输入 accession 与当前主 accession 精确匹配
-secondary_match	输入是历史 secondary accession，唯一映射到一个当前条目
-ambiguous	对应多个当前条目，无法确定唯一映射
-unmapped	主、secondary 查询均成功完成，但当前活动数据库中没有精确匹配
-invalid_id	输入 ID 格式不受支持，或 accession 格式不合法
-api_error	网络、HTTP、响应解析或分页检查失败，下次运行会重新查询
-interrupted	运行中断，该 accession 尚未完成查询
+`mapping_source` 的当前固定取值为：
 
+- 主 accession 查询的确定结果：`UniProtKB REST: exact accession + primaryAccession verification`。
+- secondary 查询的确定结果或歧义：`UniProtKB REST: exact sec_acc + secondaryAccessions verification`。
+- `unmapped`：以上两个字符串按主查询、secondary 查询顺序用 `; ` 连接，表示两种查询均完成。
+- `invalid_id`：`local_id_validation`；`api_error`：`UniProtKB REST: incomplete query`；`interrupted`：`not_completed`。
 
-只有 primary_match 和 secondary_match 属于已确认映射，可用于物种筛选；筛选时还要求 taxonomy_id 与 --taxon 完全一致。
+示意输出仅展示前七列，字段间为制表符；空字段由连续制表符表示。示例不代表本轮实时 API 查询，实际文件还包含后续九列：
+
+```tsv
+original_id	accession	taxonomy_id	organism_name	matched_accession	mapping_status	mapping_source
+sp|p69905|HBA_HUMAN	P69905	9606	Homo sapiens	P69905	primary_match	UniProtKB REST: exact accession + primaryAccession verification
+P69905-2	P69905-2				invalid_id	local_id_validation
+```
+
+`ambiguous` 即使多个候选具有相同物种，也将第 3–5 列留空，候选写入 `candidate_matches`；`api_error` / `interrupted` 的空值表示查询未完成，不能视作数据库不存在该 accession。筛选目标不会改变前七列：确定的其他物种仍输出自己的 taxonomy ID 和学名。
 
 其他列：
 
@@ -191,30 +202,22 @@ TSV 使用 UTF-8 与标准 CSV 引号规则；程序读取时建议 `csv.DictRea
 
 退出码：`0` 表示查询流程完成（可以包含歧义、未匹配或非法 ID）；`1` 为输入、文件、缓存等错误；`2` 为存在 API 错误或命令行参数错误；`130` 为用户中断。在映射阶段按 Ctrl+C，会尽量生成已完成记录和标为 `interrupted` 的未完成记录；强制结束进程时依靠已提交缓存恢复。
 
-## 测试与小规模在线验证
+## 迁移与复用检查（2026-10-24）
 
-测试文件位于 `tests/`，脚本位于 `重写/`。从项目根目录运行测试前，将脚本目录加入当前 PowerShell 会话的模块搜索路径；保留已有的 `PYTHONPATH`，不更改系统设置或虚拟环境文件：
+脚本中未发现个人盘符、用户名、固定输入数据或固定目标物种。输入、输出、缓存及可选筛选文件均由命令行指定，默认伴随文件由 `--output` 推导；路径支持 `~`，相对路径以启动时的工作目录为准。报告中的绝对路径是运行时记录，不是下次运行要读取的配置。
 
-```powershell
-$env:PYTHONPATH = (Resolve-Path './重写').Path + [IO.Path]::PathSeparator + $env:PYTHONPATH
-```
+迁移时复制 `fasta_taxonomy_mapper.py` 即可复用逻辑；建议同时带上两份 README 和项目的依赖清单。目标机器需准备自己的 Python 3.11+ 环境及已有依赖。不要直接复制 Windows `.venv` 到其他机器或 Linux/WSL；本项目环境引用本机基础解释器，不是可迁移运行时。文档中的 `.venv` 只是调用示例，脚本本身没有绑定解释器路径。
 
-离线回归测试，无网络访问：
+复用边界与注意事项：
 
-```powershell
-.\.venv\Scripts\python.exe -B -m unittest discover -s tests -p 'test_fasta_taxonomy_mapper.py' -v
-```
+- UniProt API 地址写在 `API_URL` 中，分页校验也固定为同一 HTTPS 主机与 `/uniprotkb/search` 路径。这是服务约束，不能仅更改一个常量就切换镜像或其他数据库；正常新查询需网络和有效 TLS 证书，只有全部命中有效缓存时才不发请求，没有专用离线模式。
+- 工具只接受上述 UniProt accession 格式，按精确 taxonomy ID 筛选；不支持任意数据库 ID、isoform 自动合并或子类群筛选。
+- 依赖清单给出兼容范围，未锁定全部版本；UniProt 活动数据也随版本变化。严格复现应保存实际依赖版本、TSV、缓存和 JSON 报告。
+- 已存在的输出文件会被替换；每个文件单独原子写入，但整组输出不是一个事务。失败后可能出现本轮 TSV 与旧报告并存，应检查退出码和报告时间。路径去重会解析符号链接，但不能识别所有硬链接别名；为输入、缓存及输出使用独立文件名，并避开缓存的 `-wal` / `-shm` 伴随文件。
+- FASTA 记录元数据、唯一 accession 结果及单次查询的分页结果保存在内存中；不是全流程恒定内存。超大输入或 secondary 候选很多时需评估内存。
 
-涵盖 ID 解析、重复与顺序、缓存往返与过期、错误缓存重查、secondary 证据和歧义、429/超时、分页完整性、Ctrl+C、TSV/报告、精确物种筛选和原始 FASTA 字节保留。
+## 当前验证与历史记录
 
-显式在线验证，仅查询 `examples/taxonomy_smoke.fasta` 的 7 个唯一合法 accession：
+当前目录没有旧文档提到的 `tests/`、`examples/taxonomy_smoke.fasta` 或 `validation/`，因此旧版 29 项测试和在线 smoke 命令不能直接重跑。2026-10-18 的通过记录属于原文档的历史声明，本次未复核其产物。
 
-```powershell
-.\.venv\Scripts\python.exe -B tests/live_smoke_test.py
-```
-
-该验证强制每页 1 条，检查 9 条原始记录、4 条人类记录、secondary 映射、跨物种歧义和筛选结果原始字节；随后再次运行，要求 HTTP 请求数为 0。产物保存在 `validation/taxonomy_smoke/`，包括完整 TSV、未确定 TSV、人类 FASTA、两次统计报告、缓存和 `verification.json`。
-
-在线测试的参考预期核查自 UniProt `2026_03`；未来数据库更新可能改变映射，届时需根据实际结果复核参考预期。示例序列是截短的测试字符串，只用于验证 ID 映射与文件保留，不适合生物学分析。
-
-基线验证日期为 **2026-10-18**：29 项离线测试全部通过；在线首次运行 9 次请求，重复运行 0 次请求；`verification.json` 的结果为 `passed`。9 条记录的状态为主匹配 4、secondary 匹配 1、歧义 2、未匹配 1、非法 ID 1，精确筛出 4 条人类记录。也验证了从其他工作目录调用脚本，以及不指定 `--taxon` 的完整映射模式，退出码为 0。
+2026-10-24 本次检查使用项目现有环境（Python 3.11.9、requests 2.34.2、Biopython 1.88），在沙盒外成功启动。离线验证检查独立复制脚本后从其他工作目录调用、缓存驱动的完整 TSV / 报告 / 精确物种筛选，以及前七列的状态和空值规则；未请求实时 UniProt 接口，未安装依赖。

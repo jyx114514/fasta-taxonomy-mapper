@@ -7,37 +7,37 @@ English | [简体中文](README.md)
 ## Requirements and execution
 
 - Python 3.11 or later.
-- Only `requests`, `biopython`, and the Python standard library are required. Dependency ranges are listed in `requirements-fasta-taxonomy.txt`.
+- Only `requests`, `biopython`, and the Python standard library are required. Dependency ranges are listed in requirements-fasta-taxonomy.txt
 - The script does not automatically install dependencies, rebuild virtual environments, or upgrade Python.
 - Validated with Python 3.11.9, requests 2.34.2, and Biopython 1.88.
 
-All examples use relative paths. They do not depend on a personal username, drive letter, or fixed project location. Run the commands from the project root using an existing project virtual environment. The current layout is:
+All examples use relative paths. They do not depend on a personal username, drive letter, or fixed project location. Run the commands from the project root using an existing project virtual environment. The illustrative layout below includes `data/` as a user-prepared input location:
 
 ```text
 project-root/
 ├── .venv/
 ├── 重写/
-│   ├── fasta_taxonomy_mapper.py
-│   ├── README.md
-│   └── README.en.md
+│   └── taxonomy脚本/
+│       ├── fasta_taxonomy_mapper.py
+│       ├── README.md
+│       └── README.en.md
 ├── 配置文件/
 │   └── requirements-fasta-taxonomy.txt
-├── examples/
-│   └── taxonomy_smoke.fasta
-├── tests/
-└── validation/
+├── data/                 # user-provided input; create as needed
+│   └── proteins.fasta
+└── results/              # generated output
 ```
 
 Show help in Windows PowerShell. Each command is on one line and requires no line-continuation characters:
 
 ```powershell
-.\.venv\Scripts\python.exe .\重写\fasta_taxonomy_mapper.py --help
+.\.venv\Scripts\python.exe .\重写\taxonomy脚本\fasta_taxonomy_mapper.py --help
 ```
 
-Map the bundled small FASTA file:
+Map your own FASTA file (`data/proteins.fasta` is a placeholder; prepare the input first):
 
 ```powershell
-.\.venv\Scripts\python.exe .\重写\fasta_taxonomy_mapper.py --input examples/taxonomy_smoke.fasta --output results/taxonomy_mapping.tsv
+.\.venv\Scripts\python.exe .\重写\taxonomy脚本\fasta_taxonomy_mapper.py --input data/proteins.fasta --output results/taxonomy_mapping.tsv
 ```
 
 The script uses `pathlib.Path`. Relative paths are resolved against the directory from which the command is launched, rather than the script directory. If you reorganize the files, adjust the relative script, input, and output paths accordingly.
@@ -45,7 +45,7 @@ The script uses `pathlib.Path`. Relative paths are resolved against the director
 On Linux or WSL, use a project environment created for that platform, for example:
 
 ```bash
-.venv/bin/python ./重写/fasta_taxonomy_mapper.py --input examples/taxonomy_smoke.fasta --output results/taxonomy_mapping.tsv
+.venv/bin/python ./重写/taxonomy脚本/fasta_taxonomy_mapper.py --input data/proteins.fasta --output results/taxonomy_mapping.tsv
 ```
 
 ## Usage examples
@@ -55,13 +55,13 @@ On Linux or WSL, use a project environment created for that platform, for exampl
 Build mappings for all species:
 
 ```powershell
-.\.venv\Scripts\python.exe .\重写\fasta_taxonomy_mapper.py --input data/proteins.fasta --output results/taxonomy_mapping.tsv --cache results/uniprot_taxonomy.cache.sqlite3
+.\.venv\Scripts\python.exe .\重写\taxonomy脚本\fasta_taxonomy_mapper.py --input data/proteins.fasta --output results/taxonomy_mapping.tsv --cache results/uniprot_taxonomy.cache.sqlite3
 ```
 
 Filter human proteins using the exact NCBI Taxonomy ID `9606`:
 
 ```powershell
-.\.venv\Scripts\python.exe .\重写\fasta_taxonomy_mapper.py --input data/proteins.fasta --output results/taxonomy_mapping.tsv --cache results/uniprot_taxonomy.cache.sqlite3 --batch-size 50 --timeout 30 --retries 3 --taxon 9606 --filtered-fasta results/human.fasta
+.\.venv\Scripts\python.exe .\重写\taxonomy脚本\fasta_taxonomy_mapper.py --input data/proteins.fasta --output results/taxonomy_mapping.tsv --cache results/uniprot_taxonomy.cache.sqlite3 --batch-size 50 --timeout 30 --retries 3 --taxon 9606 --filtered-fasta results/human.fasta
 ```
 
 `--output` always contains the complete mapping table. With `--taxon`, the table records the target-species decision and the report includes target counts. `--filtered-fasta` creates a separate FASTA containing only confirmed target records. Chimpanzee `9598`, bonobo `9597`, and other primates are not included in a `9606` filter.
@@ -130,7 +130,34 @@ For `--output results/taxonomy_mapping.tsv`, the default files are:
 | `taxonomy_mapping.report.json` | Status counts for records and unique accessions, request/retry counts, cache hits, releases, input SHA-256, query times, and parameters |
 | `taxonomy_mapping.cache.sqlite3` | Incremental cache; use `--cache` to specify a shared path |
 
-The first seven TSV columns are `original_id`, `accession`, `taxonomy_id`, `organism_name`, `matched_accession`, `mapping_status`, and `mapping_source`.
+The complete and unresolved tables share the same 16-column header. The first seven columns always appear in the following order. Each FASTA record produces one row; duplicate IDs are retained.
+
+| Position | Field | Expected output and blank-value rules |
+|---|---|---|
+| 1 | `original_id` | Original Biopython `record.id`: the identifier after `>` and before the first whitespace. Case and `sp\|…\|…` / `tr\|…\|…` wrappers are preserved; `>` and the full description are excluded. |
+| 2 | `accession` | Accession extracted from a supported header and uppercased. For example, `sp\|p69905\|HBA_HUMAN` produces `P69905`. Invalid plain IDs are also uppercased; unsupported pipe-delimited IDs instead retain the trimmed original token for diagnosis, which is not necessarily a valid accession. |
+| 3 | `taxonomy_id` | Positive integer NCBI Taxonomy ID of the unique current entry, such as `9606`, only for `primary_match` / `secondary_match`. Blank for every other status; never a placeholder such as `0`, `None`, or `NA`. |
+| 4 | `organism_name` | API `organism.scientificName` for that confirmed entry, such as `Homo sapiens`. Blank for unresolved statuses. Species are not inferred from FASTA descriptions. |
+| 5 | `matched_accession` | Current primary accession of the confirmed match. Equals column 2 for a primary match; for a secondary match, contains the linked current primary accession while column 2 retains the input accession. Blank for unresolved statuses. |
+| 6 | `mapping_status` | One of `primary_match`, `secondary_match`, `ambiguous`, `unmapped`, `invalid_id`, `api_error`, or `interrupted`, as defined above. |
+| 7 | `mapping_source` | Text identifying the evidence or failure stage, with literal values listed below. Cache hits preserve this value rather than replacing it with `cache`. |
+
+Current literal `mapping_source` values are:
+
+- Confirmed primary lookup: `UniProtKB REST: exact accession + primaryAccession verification`.
+- Confirmed or ambiguous secondary lookup: `UniProtKB REST: exact sec_acc + secondaryAccessions verification`.
+- `unmapped`: the two strings above, in primary-then-secondary order, joined with `; ` to indicate that both lookups completed.
+- `invalid_id`: `local_id_validation`; `api_error`: `UniProtKB REST: incomplete query`; `interrupted`: `not_completed`.
+
+This illustrative output shows only the first seven columns, separated by tabs. Consecutive tabs represent blank fields. It is not a live API result from this review; actual files include nine further columns:
+
+```tsv
+original_id	accession	taxonomy_id	organism_name	matched_accession	mapping_status	mapping_source
+sp|p69905|HBA_HUMAN	P69905	9606	Homo sapiens	P69905	primary_match	UniProtKB REST: exact accession + primaryAccession verification
+P69905-2	P69905-2				invalid_id	local_id_validation
+```
+
+For `ambiguous`, columns 3–5 remain blank even when all candidates share a species; candidates appear in `candidate_matches`. Blanks for `api_error` / `interrupted` mean the lookup did not complete, not that the accession is absent from the database. A target filter does not change these seven columns: confirmed entries from other species retain their own taxonomy IDs and scientific names.
 
 Additional columns:
 
@@ -175,30 +202,22 @@ Each output file is written through a temporary file and an atomic replacement. 
 
 Exit codes: `0` means the query workflow completed, potentially with ambiguous, unmapped, or invalid IDs; `1` indicates input, file, cache, or similar errors; `2` indicates API errors or invalid command-line arguments; `130` indicates interruption. Ctrl+C during mapping attempts to write completed results and mark pending records as `interrupted`. After forced process termination, recovery relies on committed cache entries.
 
-## Tests and small live validation
+## Portability and reuse review (2026-10-24)
 
-Tests are in `tests/`, while the script is in `重写/`. Before running tests from the project root, add the script directory to the current PowerShell session's module search path. This preserves the existing `PYTHONPATH` and does not change system settings or virtual environment files:
+No personal drive letters, usernames, fixed input datasets, or fixed target species were found in the script. Input, output, cache, and optional filtered-file paths are CLI arguments; companion defaults are derived from `--output`. Paths support `~`, and relative paths use the launch working directory. Absolute paths in reports record that run; they are not configuration loaded by subsequent runs.
 
-```powershell
-$env:PYTHONPATH = (Resolve-Path './重写').Path + [IO.Path]::PathSeparator + $env:PYTHONPATH
-```
+Copying `fasta_taxonomy_mapper.py` is sufficient to reuse its logic. Also retain both READMEs and the project's dependency list. Prepare a separate Python 3.11+ environment with the required dependencies on the destination machine. Do not copy a Windows `.venv` to another machine or Linux/WSL: this project's environment refers to a local base interpreter and is not a portable runtime. The documented `.venv` path is an invocation example, not an interpreter path embedded in the script.
 
-Run the offline regression suite without network access:
+Reuse constraints and operational details:
 
-```powershell
-.\.venv\Scripts\python.exe -B -m unittest discover -s tests -p 'test_fasta_taxonomy_mapper.py' -v
-```
+- The UniProt endpoint is fixed in `API_URL`; pagination validation also fixes the HTTPS host and `/uniprotkb/search` path. Switching to a mirror or another database requires more than changing that constant. Fresh lookups require network access and valid TLS certificates. No requests are made when all lookups hit valid cache entries; there is no dedicated offline mode.
+- The tool accepts the UniProt accession formats described above and filters exact taxonomy IDs. Arbitrary database IDs, automatic isoform merging, and descendant-taxon filtering are unsupported.
+- Dependency ranges are not a fully pinned environment, and active UniProt data can change. For reproducibility, preserve actual dependency versions, TSV files, caches, and JSON reports.
+- Existing output files are replaced. Each file is written atomically, but the set of outputs is not transactional: failures can leave a new TSV beside an old report. Check exit codes and report timestamps. Path deduplication resolves symbolic links but cannot recognize every hard-link alias. Use separate files for input, cache, and outputs, avoiding the cache's `-wal` / `-shm` companion paths.
+- FASTA record metadata, unique-accession results, and pages within a query are retained in memory. The complete workflow does not use constant memory; assess memory needs for very large inputs or many secondary candidates.
 
-Coverage includes ID parsing, duplicates and order, cache round trips and expiry, requerying cached errors, secondary evidence and ambiguity, HTTP 429/timeouts, pagination completeness, Ctrl+C, TSV/report output, exact species filtering, and preservation of original FASTA bytes.
+## Current validation and historical records
 
-Run the explicit live check, which queries only the 7 unique valid accessions in `examples/taxonomy_smoke.fasta`:
+The current project does not contain the previously documented `tests/`, `examples/taxonomy_smoke.fasta`, or `validation/`. The old 29-test suite and live smoke commands therefore cannot be rerun directly. The 2026-10-18 success record is a historical statement from the previous documentation; its artifacts were not reverified in this review.
 
-```powershell
-.\.venv\Scripts\python.exe -B tests/live_smoke_test.py
-```
-
-The check forces one result per page and verifies all 9 original records, 4 human records, secondary mapping, ambiguity across species, and byte-for-byte preservation of selected records. A second run must make zero HTTP requests. Outputs are saved in `validation/taxonomy_smoke/`: complete and unresolved TSV files, human FASTA, reports from both runs, the cache, and `verification.json`.
-
-Live-test reference expectations were checked against UniProt `2026_03`. Future database changes may alter mappings and require reviewing those expectations. Example sequences are truncated test strings intended for checking ID mapping and file preservation, not biological analysis.
-
-Baseline validation on **2026-10-18** passed all 29 offline tests. The first live run made 9 requests and the repeated run made 0; `verification.json` recorded `passed`. The 9 records comprised 4 primary matches, 1 secondary match, 2 ambiguous records, 1 unmapped record, and 1 invalid ID. Exact filtering selected 4 human records. Invocation from another working directory and complete mapping without `--taxon` were also verified with exit code 0.
+The 2026-10-24 review used the existing project environment (Python 3.11.9, requests 2.34.2, Biopython 1.88), successfully launched outside the sandbox. Offline checks covered invoking a standalone copy from another working directory, cache-driven complete TSV/report generation and exact species filtering, and the first seven columns' status and blank-value rules. No live UniProt requests were made and no dependencies were installed.
