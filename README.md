@@ -2,7 +2,7 @@
 
 [English](README.en.md) | 简体中文
 
-`fasta_taxonomy_mapper.py` 使用 Biopython 解析 FASTA，通过 UniProt 官方 REST API 建立 accession 到当前数据库物种的映射。只查询唯一 accession，但输出每条原始 FASTA 记录，保留重复项和顺序。
+`fasta_taxonomy_mapper.py` 使用 Biopython 解析 FASTA，通过 UniProt 官方 REST API 建立 accession 到当前数据库物种的映射。只查询唯一 accession，同时输出每条原始 FASTA 记录，保留重复项和顺序。
 
 ## 运行环境
 
