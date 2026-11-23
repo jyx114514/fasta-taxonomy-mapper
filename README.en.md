@@ -202,13 +202,7 @@ Each output file is written through a temporary file and an atomic replacement. 
 
 Exit codes: `0` means the query workflow completed, potentially with ambiguous, unmapped, or invalid IDs; `1` indicates input, file, cache, or similar errors; `2` indicates API errors or invalid command-line arguments; `130` indicates interruption. Ctrl+C during mapping attempts to write completed results and mark pending records as `interrupted`. After forced process termination, recovery relies on committed cache entries.
 
-## Portability and reuse review (2026-10-24)
-
-No personal drive letters, usernames, fixed input datasets, or fixed target species were found in the script. Input, output, cache, and optional filtered-file paths are CLI arguments; companion defaults are derived from `--output`. Paths support `~`, and relative paths use the launch working directory. Absolute paths in reports record that run; they are not configuration loaded by subsequent runs.
-
-Copying `fasta_taxonomy_mapper.py` is sufficient to reuse its logic. Also retain both READMEs and the project's dependency list. Prepare a separate Python 3.11+ environment with the required dependencies on the destination machine. Do not copy a Windows `.venv` to another machine or Linux/WSL: this project's environment refers to a local base interpreter and is not a portable runtime. The documented `.venv` path is an invocation example, not an interpreter path embedded in the script.
-
-Reuse constraints and operational details:
+## Reuse constraints and operational details:
 
 - The UniProt endpoint is fixed in `API_URL`; pagination validation also fixes the HTTPS host and `/uniprotkb/search` path. Switching to a mirror or another database requires more than changing that constant. Fresh lookups require network access and valid TLS certificates. No requests are made when all lookups hit valid cache entries; there is no dedicated offline mode.
 - The tool accepts the UniProt accession formats described above and filters exact taxonomy IDs. Arbitrary database IDs, automatic isoform merging, and descendant-taxon filtering are unsupported.
@@ -216,8 +210,3 @@ Reuse constraints and operational details:
 - Existing output files are replaced. Each file is written atomically, but the set of outputs is not transactional: failures can leave a new TSV beside an old report. Check exit codes and report timestamps. Path deduplication resolves symbolic links but cannot recognize every hard-link alias. Use separate files for input, cache, and outputs, avoiding the cache's `-wal` / `-shm` companion paths.
 - FASTA record metadata, unique-accession results, and pages within a query are retained in memory. The complete workflow does not use constant memory; assess memory needs for very large inputs or many secondary candidates.
 
-## Current validation and historical records
-
-The current project does not contain the previously documented `tests/`, `examples/taxonomy_smoke.fasta`, or `validation/`. The old 29-test suite and live smoke commands therefore cannot be rerun directly. The 2026-10-18 success record is a historical statement from the previous documentation; its artifacts were not reverified in this review.
-
-The 2026-10-24 review used the existing project environment (Python 3.11.9, requests 2.34.2, Biopython 1.88), successfully launched outside the sandbox. Offline checks covered invoking a standalone copy from another working directory, cache-driven complete TSV/report generation and exact species filtering, and the first seven columns' status and blank-value rules. No live UniProt requests were made and no dependencies were installed.
